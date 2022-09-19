@@ -4,12 +4,12 @@
 pragma solidity >=0.7.0 <0.9.0; //this contract works for solidty version from 0.7.0 to less than 0.9.0
 
 /**
-* @dev REquired interface of an ERC20 compliant contract.
-*/
+ * @dev REquired interface of an ERC20 compliant contract.
+ */
 interface IERC20Token {
     function transfer(address, uint256) external returns (bool);
 
-/**
+    /**
      * @dev Gives permission to `to` to transfer `tokenId` token to another account.
      * The approval is cleared when the token is transferred.
      *
@@ -24,7 +24,7 @@ interface IERC20Token {
      */
     function approve(address, uint256) external returns (bool);
 
- /**
+    /**
      * @dev Transfers `tokenId` token from `from` to `to`
      *
      * Requirements:
@@ -42,24 +42,23 @@ interface IERC20Token {
         uint256
     ) external returns (bool);
 
-
     function totalSupply() external view returns (uint256);
 
-/*
-*@dev Returns the number of tokens in``owner``'s acount.
-*/
+    /*
+     *@dev Returns the number of tokens in``owner``'s acount.
+     */
     function balanceOf(address) external view returns (uint256);
 
     function allowance(address, address) external view returns (uint256);
 
-/*
-*@dev Emitted when `tokenId` token is transferred from `from` to `to`.
-*/
+    /*
+     *@dev Emitted when `tokenId` token is transferred from `from` to `to`.
+     */
     event Transfer(address indexed from, address indexed to, uint256 value);
 
-/*
-*@dev Emitted when `owner` enables `approved` to manage the `tokenId` token.
-*/  
+    /*
+     *@dev Emitted when `owner` enables `approved` to manage the `tokenId` token.
+     */
     event Approval(
         address indexed owner,
         address indexed spender,
@@ -68,57 +67,73 @@ interface IERC20Token {
 }
 
 contract Accessories {
-    
-
-
-    uint private noAccessoriesAvailable = 0;
+    uint256 private noAccessoriesAvailable = 0;
 
     /// @dev stores the cUsdToken Address
     address private cUsdTokenAddress =
         0x874069Fa1Eb16D44d622F2e0Ca25eeA172369bC1;
 
-    struct WristItem{
+    struct WristItem {
         address payable owner;
         string name;
         string image;
         string description;
-        uint price;
-        uint tempPrice;
-        uint sold;
-        uint units;
-        uint nLikes;
+        uint256 price;
+        uint256 tempPrice;
+        uint256 sold;
+        uint256 units;
+        uint256 nLikes;
     }
 
-    mapping(uint => WristItem) private wristItems;
+    mapping(uint256 => WristItem) private wristItems;
 
-    mapping(uint => bool) private available;
+    mapping(uint256 => bool) private available;
+    // keeps track of users that liked an item
+    mapping(uint256 => mapping(address => bool)) private liked;
 
-    modifier isOwner(uint _index) {
-        require(wristItems[_index].owner == msg.sender, "Forbbiden: Owner Only");
+    modifier isOwner(uint256 _index) {
+        require(
+            wristItems[_index].owner == msg.sender,
+            "Forbbiden: Owner Only"
+        );
         _;
     }
 
-    modifier validAmount(uint _price) {
-        require(_price > 0, "Price must be at least one cusd");
+    modifier validAmount(uint256 _price) {
+        require(_price >= 1 ether, "Price must be at least one cusd");
         _;
     }
 
-    modifier isAvailable(uint _index) {
+    modifier checkIfValidCustomer(uint256 _index) {
+        require(
+            wristItems[_index].owner != msg.sender,
+            "Error: Only valid customers"
+        );
+        _;
+    }
+
+    modifier isAvailable(uint256 _index) {
         require(available[_index], "Item does not isAvailable");
         _;
     }
 
+    /**
+     * @dev allow users to add an item to the plaform
+     * @notice Input data can't contain empty or incorrect values
+     */
     function addItem(
         string calldata _name,
         string calldata _image,
         string calldata _description,
-        uint _price,
-        uint _units
+        uint256 _price,
+        uint256 _units
     ) public validAmount(_price) {
         require(bytes(_name).length > 0, "Empty name");
         require(bytes(_image).length > 0, "Empty image url");
         require(bytes(_description).length > 0, "Empty description");
-        wristItems[noAccessoriesAvailable] = WristItem(
+        uint256 index = noAccessoriesAvailable;
+        noAccessoriesAvailable++;
+        wristItems[index] = WristItem(
             payable(msg.sender),
             _name,
             _image,
@@ -128,28 +143,56 @@ contract Accessories {
             0,
             _units,
             0
-
         );
-         available[noAccessoriesAvailable] = true;
-        noAccessoriesAvailable++;
+        available[index] = true;
     }
 
-    function promoSale(uint _index, uint _discount) external isAvailable(_index) isOwner(_index){
-        uint newPrice = wristItems[_index].price - ((_discount * wristItems[_index].price )/100);
+    /**
+     * @dev allow items' owners to put a promo sale on their items
+     */
+    function promoSale(uint256 _index, uint256 _discount)
+        external
+        isAvailable(_index)
+        isOwner(_index)
+    {
+        require(
+            _discount >= 0 && _discount <= 100,
+            "Discount percentage can only be between 0 and 100"
+        );
+        uint256 newPrice = wristItems[_index].price -
+            ((_discount * wristItems[_index].price) / 100);
         wristItems[_index].price = newPrice;
     }
 
-    function endPromoSale(uint _index) external isAvailable(_index) isOwner(_index){
+    /**
+     * @dev allow items' owners to end a promo sale on their items
+     * @notice the item's price will be set to the initial price of the item
+     */
+    function endPromoSale(uint256 _index)
+        external
+        isAvailable(_index)
+        isOwner(_index)
+    {
         wristItems[_index].price = wristItems[_index].tempPrice;
     }
-    
 
-    function deleteItem(uint _index) isOwner(_index) isAvailable(_index) public{
-        delete(wristItems[_index]);
-        noAccessoriesAvailable--;
+    /**
+     * @dev allow items' owners to remove their items from the platform
+     * @dev mapping is reordered before cleanup of the item's data
+     */
+    function deleteItem(uint256 _index)
+        public
+        isOwner(_index)
+        isAvailable(_index)
+    {
+        uint256 newLength = noAccessoriesAvailable - 1;
+        wristItems[_index] = wristItems[newLength];
+        delete (wristItems[newLength]);
+        available[newLength] = false;
+        noAccessoriesAvailable = newLength;
     }
 
-    function viewItem(uint _index)
+    function viewItem(uint256 _index)
         public
         view
         isAvailable(_index)
@@ -158,50 +201,68 @@ contract Accessories {
         return (wristItems[_index]);
     }
 
-    function buyItem(uint _index,uint units) external payable isAvailable(_index) {
-        require(
-            wristItems[_index].owner != msg.sender,
-            "You can't buy your own Items"
-        );
-        uint amount = wristItems[_index].price * units;
-       
+    /**
+     * @dev allow users to buy an item
+     * @param units number of items to buy
+     */
+    function buyItem(uint256 _index, uint256 units)
+        external
+        payable
+        isAvailable(_index)
+        checkIfValidCustomer(_index)
+    {
+        require(units > 0, "You must buy at least one unit");
+        WristItem storage currentItem = wristItems[_index];
+        require(currentItem.units >= units, "Not enough units in stock");
+        uint256 amount = currentItem.price * units;
+        currentItem.sold++;
+        uint256 unitsLeft = currentItem.units - units;
+        currentItem.units = unitsLeft;
         require(
             IERC20Token(cUsdTokenAddress).transferFrom(
                 msg.sender,
-                wristItems[_index].owner,
+                currentItem.owner,
                 amount
             ),
             "Transfer failed."
         );
-        wristItems[_index].sold++;
-        wristItems[_index].units = wristItems[_index].units - units;
     }
 
-    function buyAllUnitsItem (uint _index) external payable isAvailable(_index){
-        require(
-            wristItems[_index].owner != msg.sender,
-            "You can't buy your own Items"
-        );
-        uint amount = wristItems[_index].price * wristItems[_index].units;
+    /**
+     * @dev allow users to buy all the units availalbe for an item
+     */
+    function buyAllUnitsItem(uint256 _index)
+        external
+        payable
+        isAvailable(_index)
+        checkIfValidCustomer(_index)
+    {
+        WristItem storage currentItem = wristItems[_index];
+        require(currentItem.units > 0, "Item is out of stock");
+        uint256 amount = currentItem.price * currentItem.units;
         require(
             IERC20Token(cUsdTokenAddress).transferFrom(
                 msg.sender,
-                wristItems[_index].owner,
+                currentItem.owner,
                 amount
             ),
             "Transfer failed."
         );
-         wristItems[_index].sold= wristItems[_index].units;
-        wristItems[_index].units = 0;
-       
+        uint256 newSoldAmount = currentItem.sold + currentItem.units;
+        currentItem.sold = newSoldAmount;
+        currentItem.units = 0;
     }
-    
-    function tipMarketer(uint _index, uint _amount) external payable
-     validAmount(_amount) isAvailable(_index){
-        require(
-            wristItems[_index].owner != msg.sender,
-            "You can't tip yourself"
-        );
+
+    /**
+     * @dev allow users to tip the owner of an item
+     */
+    function tipMarketer(uint256 _index, uint256 _amount)
+        external
+        payable
+        validAmount(_amount)
+        isAvailable(_index)
+        checkIfValidCustomer(_index)
+    {
         require(
             IERC20Token(cUsdTokenAddress).transferFrom(
                 msg.sender,
@@ -212,15 +273,21 @@ contract Accessories {
         );
     }
 
-    function likeItem( uint _index) external isAvailable(_index){
-        require(
-            wristItems[_index].owner != msg.sender,
-            "You can't like your own item yourself"
-        );
+    /**
+     * @dev allow users to like an item
+     * @notice users can like an item only once
+     */
+    function likeItem(uint256 _index)
+        external
+        isAvailable(_index)
+        checkIfValidCustomer(_index)
+    {
+        require(!liked[_index][msg.sender], "You have already liked this item");
+        liked[_index][msg.sender] = true;
         wristItems[_index].nLikes++;
     }
 
-    function totalAccessoriesAvailable() public view returns (uint) {
+    function totalAccessoriesAvailable() public view returns (uint256) {
         return (noAccessoriesAvailable);
     }
 }
