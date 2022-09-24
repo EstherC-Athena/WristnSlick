@@ -215,7 +215,7 @@ contract Accessories {
         WristItem storage currentItem = wristItems[_index];
         require(currentItem.units >= units, "Not enough units in stock");
         uint256 amount = currentItem.price * units;
-        currentItem.sold++;
+        currentItem.sold += units;
         uint256 unitsLeft = currentItem.units - units;
         currentItem.units = unitsLeft;
         require(
